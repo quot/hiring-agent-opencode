@@ -1,4 +1,4 @@
-# Hiring Agent
+# Hiring Agent for OpenCode
 
 OpenCode-first resume evaluation pipeline that extracts structured data from PDFs, enriches with GitHub signals, and produces an auditable score report.
 
