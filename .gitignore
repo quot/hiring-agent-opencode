@@ -2,9 +2,11 @@
 
 **/*.pyc
 resume/*.pdf
+resumes/
 run/*.pdf
 test_*.py
 cache/
+.artifacts/
 resume_evaluations.csv
 greenhouse_resumes/*
 

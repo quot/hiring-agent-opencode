@@ -1,28 +1,5 @@
-from typing import List, Optional, Dict, Tuple, Any, Protocol, runtime_checkable
-from pydantic import BaseModel, Field, field_validator
-from enum import Enum
-
-
-class ModelProvider(Enum):
-    """Enum for supported model providers."""
-
-    OLLAMA = "ollama"
-    GEMINI = "gemini"
-
-
-@runtime_checkable
-class LLMProvider(Protocol):
-    """Protocol for LLM providers."""
-
-    def chat(
-        self,
-        model: str,
-        messages: List[Dict[str, str]],
-        options: Dict[str, Any] = None,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Send a chat request to the LLM provider."""
-        ...
+from typing import List, Optional
+from pydantic import BaseModel, Field
 
 
 class Location(BaseModel):
@@ -268,124 +245,34 @@ class GitHubProfile(BaseModel):
     hireable: Optional[bool] = None
 
 
-class OllamaProvider:
-    """Ollama LLM provider implementation."""
-
-    def __init__(self):
-        import ollama
-
-        self.client = ollama
-
-    def chat(
-        self,
-        model: str,
-        messages: List[Dict[str, str]],
-        options: Dict[str, Any] = None,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Send a chat request to Ollama."""
-
-        ollama_options = options.copy() if options else {}
-
-        # remove steam from ollama options
-        ollama_options.pop("stream", None)
-
-        # Add num_ctx 32K context window to options
-        ollama_options["num_ctx"] = 32768
-
-        # convert to chat params
-        chat_params = {
-            "model": model,
-            "messages": messages,
-            "options": ollama_options,
-        }
-
-        # add it to top level
-        if "stream" in kwargs:
-            chat_params["stream"] = kwargs["stream"]
-
-        if "format" in kwargs:
-            chat_params["format"] = kwargs["format"]
-
-        return self.client.chat(**chat_params)
+class GitHubSelectedProjectDetails(BaseModel):
+    stars: int = 0
+    forks: int = 0
+    language: Optional[str] = None
+    description: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    topics: Optional[List[str]] = None
+    open_issues: int = 0
+    size: int = 0
+    fork: bool = False
+    archived: bool = False
+    default_branch: Optional[str] = None
 
 
-class GeminiProvider:
-    """Google Gemini API provider implementation."""
+class GitHubSelectedProject(BaseModel):
+    name: str
+    description: Optional[str] = None
+    github_url: str
+    live_url: Optional[str] = None
+    technologies: Optional[List[str]] = None
+    reason_for_project_selection: str = Field(min_length=1)
+    author_commit_count: int = Field(ge=4)
+    total_commit_count: int = Field(ge=0)
+    github_details: GitHubSelectedProjectDetails
 
-    def __init__(self, api_key: str):
-        import google.generativeai as genai
 
-        genai.configure(api_key=api_key)
-        self.client = genai
+class GitHubSelectedProjects(BaseModel):
+    """Selected GitHub projects returned by OpenCode structured output."""
 
-    def chat(
-        self,
-        model: str,
-        messages: List[Dict[str, str]],
-        options: Dict[str, Any] = None,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Send a chat request to Google Gemini API."""
-        import re
-        import time
-        import random
-        from google.api_core.exceptions import ResourceExhausted
-
-        MAX_RETRIES = 5
-        BASE_DELAY = 10.0  # seconds — base for exponential backoff
-        MAX_DELAY = 120.0  # cap so we never wait more than 2 minutes
-
-        # Map options to Gemini parameters
-        generation_config = {}
-        if options:
-            if "temperature" in options:
-                generation_config["temperature"] = options["temperature"]
-            if "top_p" in options:
-                generation_config["top_p"] = options["top_p"]
-
-        # Create a Gemini model
-        gemini_model = self.client.GenerativeModel(
-            model_name=model, generation_config=generation_config
-        )
-
-        # Convert messages to Gemini format
-        gemini_messages = []
-        for msg in messages:
-            role = "user" if msg["role"] == "user" else "model"
-            gemini_messages.append({"role": role, "parts": [msg["content"]]})
-
-        for attempt in range(MAX_RETRIES):
-            try:
-                # Send the chat request
-                response = gemini_model.generate_content(gemini_messages)
-
-                # Convert Gemini response to Ollama-like format for compatibility
-                return {"message": {"role": "assistant", "content": response.text}}
-
-            except ResourceExhausted as e:
-                if attempt == MAX_RETRIES - 1:
-                    # All retries exhausted — re-raise the original exception.
-                    # This surfaces unrecoverable quota errors (RPD, TPM, etc.)
-                    # instead of silently failing or returning bad data.
-                    raise
-
-                # Parse the API-suggested retry delay from the error message
-                match = re.search(r"retry[_ ]in\s+([\d.]+)s", str(e), re.IGNORECASE)
-                api_hint = float(match.group(1)) if match else None
-
-                # Exponential backoff: BASE_DELAY * 2^attempt, capped at MAX_DELAY
-                exp_delay = min(BASE_DELAY * (2 ** attempt), MAX_DELAY)
-
-                # Prefer the API hint when it is shorter than our computed delay
-                delay = api_hint if (api_hint and api_hint < exp_delay) else exp_delay
-
-                # Add ±20% randomized jitter to avoid thundering herd
-                sleep_time = round(delay * random.uniform(0.8, 1.2), 2)
-
-                print(
-                    f"[GeminiProvider] Rate limit hit "
-                    f"(attempt {attempt + 1}/{MAX_RETRIES}). "
-                    f"Retrying in {sleep_time}s..."
-                )
-                time.sleep(sleep_time)
+    projects: List[GitHubSelectedProject] = Field(default_factory=list, max_length=7)
